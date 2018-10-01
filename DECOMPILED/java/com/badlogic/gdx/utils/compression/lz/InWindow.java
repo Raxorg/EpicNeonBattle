@@ -1,0 +1,125 @@
+package com.badlogic.gdx.utils.compression.lz;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+public class InWindow {
+    public int _blockSize;
+    public byte[] _bufferBase;
+    public int _bufferOffset;
+    int _keepSizeAfter;
+    int _keepSizeBefore;
+    int _pointerToLastSafePosition;
+    public int _pos;
+    int _posLimit;
+    InputStream _stream;
+    boolean _streamEndWasReached;
+    public int _streamPos;
+
+    public void MoveBlock() {
+        int offset = (this._bufferOffset + this._pos) - this._keepSizeBefore;
+        if (offset > 0) {
+            offset--;
+        }
+        int numBytes = (this._bufferOffset + this._streamPos) - offset;
+        for (int i = 0; i < numBytes; i++) {
+            this._bufferBase[i] = this._bufferBase[offset + i];
+        }
+        this._bufferOffset -= offset;
+    }
+
+    public void ReadBlock() throws IOException {
+        if (!this._streamEndWasReached) {
+            while (true) {
+                int size = ((0 - this._bufferOffset) + this._blockSize) - this._streamPos;
+                if (size != 0) {
+                    int numReadBytes = this._stream.read(this._bufferBase, this._bufferOffset + this._streamPos, size);
+                    if (numReadBytes == -1) {
+                        break;
+                    }
+                    this._streamPos += numReadBytes;
+                    if (this._streamPos >= this._pos + this._keepSizeAfter) {
+                        this._posLimit = this._streamPos - this._keepSizeAfter;
+                    }
+                } else {
+                    return;
+                }
+            }
+            this._posLimit = this._streamPos;
+            if (this._bufferOffset + this._posLimit > this._pointerToLastSafePosition) {
+                this._posLimit = this._pointerToLastSafePosition - this._bufferOffset;
+            }
+            this._streamEndWasReached = true;
+        }
+    }
+
+    void Free() {
+        this._bufferBase = null;
+    }
+
+    public void Create(int keepSizeBefore, int keepSizeAfter, int keepSizeReserv) {
+        this._keepSizeBefore = keepSizeBefore;
+        this._keepSizeAfter = keepSizeAfter;
+        int blockSize = (keepSizeBefore + keepSizeAfter) + keepSizeReserv;
+        if (this._bufferBase == null || this._blockSize != blockSize) {
+            Free();
+            this._blockSize = blockSize;
+            this._bufferBase = new byte[this._blockSize];
+        }
+        this._pointerToLastSafePosition = this._blockSize - keepSizeAfter;
+    }
+
+    public void SetStream(InputStream stream) {
+        this._stream = stream;
+    }
+
+    public void ReleaseStream() {
+        this._stream = null;
+    }
+
+    public void Init() throws IOException {
+        this._bufferOffset = 0;
+        this._pos = 0;
+        this._streamPos = 0;
+        this._streamEndWasReached = false;
+        ReadBlock();
+    }
+
+    public void MovePos() throws IOException {
+        this._pos++;
+        if (this._pos > this._posLimit) {
+            if (this._bufferOffset + this._pos > this._pointerToLastSafePosition) {
+                MoveBlock();
+            }
+            ReadBlock();
+        }
+    }
+
+    public byte GetIndexByte(int index) {
+        return this._bufferBase[(this._bufferOffset + this._pos) + index];
+    }
+
+    public int GetMatchLen(int index, int distance, int limit) {
+        if (this._streamEndWasReached && (this._pos + index) + limit > this._streamPos) {
+            limit = this._streamPos - (this._pos + index);
+        }
+        distance++;
+        int pby = (this._bufferOffset + this._pos) + index;
+        int i = 0;
+        while (i < limit && this._bufferBase[pby + i] == this._bufferBase[(pby + i) - distance]) {
+            i++;
+        }
+        return i;
+    }
+
+    public int GetNumAvailableBytes() {
+        return this._streamPos - this._pos;
+    }
+
+    public void ReduceOffsets(int subValue) {
+        this._bufferOffset += subValue;
+        this._posLimit -= subValue;
+        this._pos -= subValue;
+        this._streamPos -= subValue;
+    }
+}

@@ -1,0 +1,15 @@
+package com.epicness.placeables;
+
+import com.epicness.assets.AssetManager;
+import com.epicness.gamelogic.GameMaster;
+
+public class Tank extends Unit {
+    public Tank() {
+        super(AssetManager.game.tankNormal, AssetManager.game.tankGlow, 3, 0, 1);
+    }
+
+    public void fireBullet() {
+        GameMaster.getInstance().getWeaponManager().addBullet(new Bullet(this));
+        AssetManager.sounds.fireBullet.play();
+    }
+}
